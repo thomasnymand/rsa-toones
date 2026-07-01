@@ -1,0 +1,19 @@
+# Generated toones — regenerate from your own key, don't commit the vinyl
+*.wav
+*.mid
+
+# Reference clips
+*.mov
+*.MOV
+
+# NEVER commit key material (this should go without saying, but here we are)
+*.pem
+*.p12
+*.pfx
+*.key
+*.der
+
+# Scratch / cruft
+__pycache__/
+*.pyc
+.DS_Store
