@@ -124,17 +124,19 @@ python3 rsa_music.py \
 ```
 
 > 🎛️ **The house mix (author's preferred settings).** After far too much
-> A/B-ing, this is the combo that reliably slaps — melody arps slow enough to
-> hear the chord tones dance, a glide on top, and the key's own drummer:
+> A/B-ing, this is the combo that reliably slaps — melody arps at a rate where
+> the chord tones dance, a shuffle so the line breathes instead of marching,
+> and the key's own drummer. No glide; keep it crisp:
 >
 > ```sh
 > python3 rsa_music.py --private priv.pem \
->   --8bit --arp-melody --arp-hz 15 --drums --portamento 0.05 --tempo 128 \
+>   --8bit --arp-melody --arp-hz 25 --swing 0.4 --drums --tempo 128 \
 >   --wav banger.wav
 > ```
 >
 > Swap `--private priv.pem` for `--p12 id.p12 --password …` to feed it a whole
-> identity. Crank `--arp-hz` toward 60 if you want full per-frame chaos.
+> identity. Crank `--arp-hz` toward 60 if you want full per-frame chaos, or add
+> `--portamento 0.05` back in if you like it slippery.
 
 ### `--8bit` — the chip
 
@@ -178,6 +180,13 @@ the fills. Different modulus, different beat. (We seed from the hash rather than
 `e`, because `e` is 65537 for basically everyone and everyone deserves their own
 drummer.)
 
+### `--swing` — make the arp breathe
+
+A uniform arp marches like a metronome. `--swing AMOUNT` (0..0.9) alternates
+**long–short** note lengths for a shuffle groove, while keeping each pair's
+total constant so the timing grid stays locked. `0.4` is a tasteful swing;
+higher gets dotted and lurchy. Applies to whichever line is arped.
+
 ### `--portamento` — glide
 
 Continuous pitch slide between notes, `SECONDS` long. In the WAV it's real
@@ -207,6 +216,7 @@ whatever synth feels like it.
 --arp                arpeggiate the harmony
 --arp-melody         arpeggiate the melody instead
 --arp-hz HZ          arp speed in notes/sec (~60 = per-frame NES)
+--swing [AMOUNT]     shuffle the arp note lengths, 0..0.9 (default 0.4)
 --drums              noise-channel beat seeded by SHA-256(n)
 --portamento [SEC]   glide between notes (default 0.12s)
 ```

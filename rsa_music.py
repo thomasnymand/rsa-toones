@@ -170,20 +170,44 @@ def make_line(data, scale, base_note, oct_range, root_pc,
     return notes
 
 
+def swung_durations(count, base_dur, remainder, swing):
+    """
+    Return `count` note lengths summing to base_dur*count + remainder. With
+    swing>0 they alternate long/short (a shuffle) instead of being uniform, so
+    the melody breathes; each long/short pair still sums to 2*base_dur, keeping
+    the timing grid aligned.
+    """
+    durs = []
+    j = 0
+    while j < count:
+        if swing and j + 1 < count:
+            long = round(base_dur * (1.0 + swing))
+            durs.append(long)
+            durs.append(2 * base_dur - long)          # pair sum stays constant
+            j += 2
+        else:
+            durs.append(base_dur)
+            j += 1
+    durs[-1] += remainder
+    return durs
+
+
 def make_arp(data, scale, base_note, oct_range, root_pc, vel_lo, vel_hi,
-             window_ticks, step_ticks, stride=1):
+             window_ticks, step_ticks, stride=1, swing=0.0):
     """
     Turn bytes into fast arpeggios: each byte picks a scale position, then a
     triad (degrees d, d+2, d+4 within the scale) is played as rapid notes that
     fill `window_ticks` — the classic chiptune "chord". `step_ticks` sets the
     arp speed (a small value ≈ one note per video frame gives the NES buzz);
     the count of notes per byte scales so the total time per byte stays fixed.
+    `swing` (0..1) alternates note lengths for a shuffle groove.
     """
     notes = []
     span = vel_hi - vel_lo
     count = max(1, round(window_ticks / step_ticks))
     base_dur = max(1, window_ticks // count)
     remainder = window_ticks - base_dur * count      # keep bytes grid-aligned
+    durs = swung_durations(count, base_dur, remainder, swing)
     for b in data[::stride]:
         degree = b % len(scale)
         octave = (b // len(scale)) % oct_range
@@ -195,8 +219,7 @@ def make_arp(data, scale, base_note, oct_range, root_pc, vel_lo, vel_hi,
             triad.append(max(0, min(127, pitch)))
         velocity = vel_lo + (b & 0x0F) * span // 15
         for j in range(count):
-            dur = base_dur + (remainder if j == count - 1 else 0)
-            notes.append((triad[j % 3], velocity, dur))
+            notes.append((triad[j % 3], velocity, durs[j]))
     return notes
 
 
@@ -551,7 +574,7 @@ def render_wav(tracks, tempo_bpm, path, sr=44100, chip=False, portamento=None, d
 # --------------------------------------------------------------------------- #
 
 def compose(public=None, private=None, scale_name="minor_pentatonic", tempo=100,
-            arp=False, arp_melody=False, arp_hz=None, drums=False):
+            arp=False, arp_melody=False, arp_hz=None, swing=0.0, drums=False):
     scale = SCALES[scale_name]
 
     # Decide which key sources the melody vs. the bass/harmony.
@@ -574,8 +597,9 @@ def compose(public=None, private=None, scale_name="minor_pentatonic", tempo=100,
         step, rate_txt = arp_step()
         melody = make_arp(melody_src, scale, base_note=60, oct_range=3,
                           root_pc=root_pc, vel_lo=64, vel_hi=112,
-                          window_ticks=DIVISION, step_ticks=step, stride=1)
-        summary.append(f"melody: {len(melody)} arp notes from public modulus (n) @ {rate_txt}")
+                          window_ticks=DIVISION, step_ticks=step, stride=1, swing=swing)
+        sw = f", swing {swing:g}" if swing else ""
+        summary.append(f"melody: {len(melody)} arp notes from public modulus (n) @ {rate_txt}{sw}")
     else:
         melody = make_line(melody_src, scale, base_note=60, oct_range=3,
                            root_pc=root_pc, vel_lo=64, vel_hi=112, dur_pool=DURS)
@@ -596,7 +620,7 @@ def compose(public=None, private=None, scale_name="minor_pentatonic", tempo=100,
             step, rate_txt = arp_step()            # one beat of arp per source byte
             harmony = make_arp(harm_src, scale, base_note=48, oct_range=2,
                                root_pc=root_pc, vel_lo=55, vel_hi=90,
-                               window_ticks=DIVISION, step_ticks=step, stride=1)
+                               window_ticks=DIVISION, step_ticks=step, stride=1, swing=swing)
             summary.append(f"arps:   {len(harmony)} notes from private exponent (d) @ {rate_txt}")
         else:
             harmony = make_line(harm_src, scale, base_note=48, oct_range=2,
@@ -668,6 +692,9 @@ def main(argv=None):
     ap.add_argument("--arp-hz", type=float, default=None, metavar="HZ",
                     help="arp speed in notes/sec (~60 = classic per-frame NES arp); "
                          "default is tempo-relative 16th notes")
+    ap.add_argument("--swing", nargs="?", type=float, const=0.4, default=0.0,
+                    metavar="AMOUNT",
+                    help="shuffle the arp note lengths, 0..0.9 (default 0.4 if bare)")
     ap.add_argument("--drums", action="store_true",
                     help="add a noise-channel drum track seeded by exponent e")
     args = ap.parse_args(argv)
@@ -689,7 +716,8 @@ def main(argv=None):
 
     tracks, root_name, summary, drums = compose(
         public, private, args.scale, args.tempo,
-        arp=args.arp, arp_melody=args.arp_melody, arp_hz=args.arp_hz, drums=args.drums)
+        arp=args.arp, arp_melody=args.arp_melody, arp_hz=args.arp_hz,
+        swing=args.swing, drums=args.drums)
 
     midi = build_midi(tracks, args.tempo, chip=args.chip,
                       portamento=args.portamento, drums=drums)
@@ -702,6 +730,8 @@ def main(argv=None):
     if args.arp or args.arp_melody:
         tag = "arps" + ("(mel)" if args.arp_melody else "")
         fx.append(f"{tag}@{args.arp_hz:g}Hz" if args.arp_hz else tag)
+    if args.swing:
+        fx.append(f"swing {args.swing:g}")
     if args.drums:
         fx.append("drums")
     if args.portamento:
